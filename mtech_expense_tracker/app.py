@@ -282,18 +282,18 @@ with st.sidebar:
 page_key = st.session_state.active_page
 
 if page_key == "dashboard":
-    from pages.dashboard import render
+    from views.dashboard import render
 elif page_key == "add_expense":
-    from pages.add_expense import render
+    from views.add_expense import render
 elif page_key == "edit_expense":
-    from pages.edit_expense import render
+    from views.edit_expense import render
 elif page_key == "summary":
-    from pages.summary import render
+    from views.summary import render
 elif page_key == "reports":
-    from pages.reports import render
+    from views.reports import render
 elif page_key == "printable":
-    from pages.printable import render
+    from views.printable import render
 elif page_key == "settings":
-    from pages.settings import render
+    from views.settings import render
 
 render()
