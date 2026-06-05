@@ -56,7 +56,6 @@ header { visibility: hidden; }
 
 @media (max-width: 768px) {
     .main .block-container { padding: 0.75rem 0.75rem 2rem !important; }
-    /* Make header visible on mobile so hamburger ☰ works */
     header { visibility: visible !important; }
     header[data-testid="stHeader"] { height: 48px !important; min-height: 48px !important; }
 }
@@ -68,6 +67,9 @@ section[data-testid="stSidebar"] {
     box-shadow: 4px 0 16px rgba(15,76,129,0.15);
 }
 section[data-testid="stSidebar"] * { color: #E8F4FD !important; }
+
+/* Hide the auto-generated Streamlit page nav links at the top of sidebar */
+section[data-testid="stSidebar"] [data-testid="stSidebarNav"] { display: none !important; }
 
 .sidebar-logo {
     text-align: center; padding: 20px 16px 8px;
@@ -173,11 +175,6 @@ section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {
 .rc-title { font-size: 16px; font-weight: 700; color: #0F4C81; margin-bottom: 8px; }
 .rc-desc  { font-size: 12px; color: #666; }
 
-/* ─── Tips cards ── */
-.tip-card { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(15,76,129,0.06); text-align: center; }
-.tip-icon  { font-size: 28px; margin-bottom: 8px; }
-.tip-title { font-size: 13px; font-weight: 700; color: #0F4C81; margin-bottom: 6px; }
-.tip-text  { font-size: 12px; color: #666; }
 
 /* ─── Edit/Delete table ── */
 .th { font-weight: 700; font-size: 12px; color: #0F4C81; padding: 8px 4px; border-bottom: 2px solid #0F4C81; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -235,7 +232,7 @@ from database.db import get_total, get_all_expenses
 total = get_total()
 count = len(get_all_expenses())
 
-# ── Sidebar (works on both desktop AND mobile via hamburger ☰) ────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-logo">
@@ -278,7 +275,9 @@ with st.sidebar:
         Blessy's M.Tech Expense Tracker v1.0<br>Built with ❤️ using Streamlit
     </div>""", unsafe_allow_html=True)
 
-# ── Route to selected page ────────────────────────────────────────────────────
+# ── Route to selected page ─────────────────────────────────────────────────────
+# Imports from 'views/' folder (renamed from 'pages/' to prevent Streamlit
+# auto-detection of multipage nav links and "Page not found" errors)
 page_key = st.session_state.active_page
 
 if page_key == "dashboard":

@@ -93,28 +93,4 @@ def render():
             st.success(f"✅ Expense saved! **{description.strip()}** — ₹{amount:,.2f} ({semester}, {paid_by})")
             st.balloons()
 
-    # ── Tips panel ────────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 💡 Quick Tips")
-    t1, t2, t3 = st.columns(3)
-    with t1:
-        st.markdown("""
-        <div class="tip-card">
-            <div class="tip-icon">📌</div>
-            <div class="tip-title">Be Descriptive</div>
-            <div class="tip-text">Use clear names like "HNGU Tuition Fees Sem 1" for easy tracking.</div>
-        </div>""", unsafe_allow_html=True)
-    with t2:
-        st.markdown("""
-        <div class="tip-card">
-            <div class="tip-icon">📅</div>
-            <div class="tip-title">Use Actual Date</div>
-            <div class="tip-text">Enter the date the payment was actually made, not today.</div>
-        </div>""", unsafe_allow_html=True)
-    with t3:
-        st.markdown("""
-        <div class="tip-card">
-            <div class="tip-icon">🏷️</div>
-            <div class="tip-title">Right Category</div>
-            <div class="tip-text">Choose the most specific category for better reports.</div>
-        </div>""", unsafe_allow_html=True)
+  
