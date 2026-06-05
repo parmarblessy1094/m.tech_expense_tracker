@@ -47,6 +47,11 @@ BOTTOM_NAV = [
     {"key": "settings",     "icon": "⚙️", "label": "Settings"},
 ]
 
+MORE_NAV = [
+    {"key": "edit_expense", "icon": "✏️", "label": "Edit / Delete"},
+    {"key": "printable",    "icon": "🖨️", "label": "Print Report"},
+]
+
 # ── Custom CSS ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -166,12 +171,13 @@ section[data-testid="stSidebar"] .stRadio input:checked + label {
 }
 
 /* ─── Mobile Bottom Navigation Bar ─────────────────────────────────── */
-.mobile-bottom-nav {
+/* The actual nav is rendered by Streamlit buttons inside a hidden container */
+.mobile-bottom-nav-wrapper {
     display: none;
 }
 @media (max-width: 768px) {
-    .mobile-bottom-nav {
-        display: flex;
+    .mobile-bottom-nav-wrapper {
+        display: block;
         position: fixed;
         bottom: 0;
         left: 0;
@@ -180,67 +186,67 @@ section[data-testid="stSidebar"] .stRadio input:checked + label {
         background: #FFFFFF;
         border-top: 1px solid #E0E8F5;
         box-shadow: 0 -4px 20px rgba(15,76,129,0.15);
-        padding: 6px 0 env(safe-area-inset-bottom, 6px);
-        justify-content: space-around;
-        align-items: stretch;
+        padding: 4px 0 env(safe-area-inset-bottom, 4px);
     }
-    .mob-nav-btn {
-        flex: 1;
+    /* Style the Streamlit columns inside the nav bar */
+    .mobile-bottom-nav-wrapper [data-testid="stHorizontalBlock"] {
+        gap: 0 !important;
+        padding: 0 4px;
+    }
+    /* Style the nav buttons */
+    .mobile-bottom-nav-wrapper .stButton > button {
+        width: 100% !important;
+        border: none !important;
+        background: transparent !important;
+        color: #999 !important;
+        font-size: 10px !important;
+        font-weight: 500 !important;
+        padding: 6px 2px !important;
+        border-radius: 10px !important;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        padding: 6px 4px;
-        cursor: pointer;
-        border: none;
-        background: transparent;
-        text-decoration: none;
         gap: 2px;
-        border-radius: 10px;
-        margin: 2px 2px;
-        transition: background 0.18s ease;
-        -webkit-tap-highlight-color: transparent;
+        box-shadow: none !important;
+        min-height: 54px !important;
     }
-    .mob-nav-btn:active { background: #EBF5FB; }
-    .mob-nav-btn.active { background: #EBF5FB; }
-    .mob-nav-btn .mob-icon {
-        font-size: 22px;
-        line-height: 1;
-        transition: transform 0.2s ease;
+    .mobile-bottom-nav-wrapper .stButton > button:hover {
+        background: #EBF5FB !important;
+        color: #0F4C81 !important;
     }
-    .mob-nav-btn.active .mob-icon { transform: scale(1.18); }
-    .mob-nav-btn .mob-label {
-        font-size: 10px;
-        font-weight: 500;
-        color: #999;
-        font-family: 'Poppins', sans-serif;
-        letter-spacing: 0.2px;
-    }
-    .mob-nav-btn.active .mob-label {
-        color: #0F4C81;
-        font-weight: 700;
-    }
-    .mob-nav-btn .mob-dot {
-        width: 5px; height: 5px;
-        border-radius: 50%;
-        background: #0F4C81;
-        opacity: 0;
-        transition: opacity 0.2s;
-    }
-    .mob-nav-btn.active .mob-dot { opacity: 1; }
-    /* More button badge */
-    .mob-nav-btn .mob-more-badge {
-        font-size: 8px; color: #0F4C81; font-weight: 700;
-        background: #EBF5FB; border-radius: 4px; padding: 1px 4px;
+    /* Active page button highlight */
+    .mobile-bottom-nav-wrapper .active-nav .stButton > button {
+        background: #EBF5FB !important;
+        color: #0F4C81 !important;
+        font-weight: 700 !important;
     }
 }
 
-/* Hide sidebar on mobile — user navigates via bottom bar */
+/* Hide sidebar on mobile */
 @media (max-width: 768px) {
     section[data-testid="stSidebar"] { display: none !important; }
-    /* expand content to full width */
     .main { margin-left: 0 !important; }
     section[data-testid="stSidebarNav"] { display: none !important; }
+}
+
+/* ─── More menu modal on mobile ─────────────────────────────────────── */
+@media (max-width: 768px) {
+    .more-menu-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+        z-index: 9998; display: flex; align-items: flex-end;
+    }
+    .more-menu-sheet {
+        background: white; width: 100%; border-radius: 16px 16px 0 0;
+        padding: 20px 16px 32px;
+    }
+    .more-menu-sheet h4 { font-size: 13px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .more-menu-sheet .stButton > button {
+        width: 100% !important; justify-content: flex-start !important;
+        gap: 10px !important; font-size: 15px !important; padding: 14px 16px !important;
+        border-radius: 10px !important; border: 1px solid #EEE !important;
+        background: white !important; color: #0F2942 !important;
+        margin-bottom: 8px !important;
+    }
 }
 
 /* ─── Metric Cards ──────────────────────────────────────────────────── */
@@ -461,44 +467,47 @@ st.markdown(f"""
     </div>
 </div>""", unsafe_allow_html=True)
 
-# ── Mobile bottom navigation bar ─────────────────────────────────────────────
+# ── Mobile "More" submenu toggle ──────────────────────────────────────────────
+if "show_more_menu" not in st.session_state:
+    st.session_state.show_more_menu = False
+
+# ── Mobile bottom navigation (Streamlit buttons — reliable on mobile) ─────────
 active_page = st.session_state.active_page
 
-nav_html = '<div class="mobile-bottom-nav">'
-for item in BOTTOM_NAV:
-    is_active = "active" if active_page == item["key"] else ""
-    nav_html += f"""
-    <button class="mob-nav-btn {is_active}" onclick="
-        var elems = window.parent.document.querySelectorAll('[data-testid=stRadio] label');
-        elems.forEach(function(el) {{
-            if (el.innerText && el.innerText.includes('{item['label']}')) {{ el.click(); }}
-        }});
-    ">
-        <span class="mob-icon">{item['icon']}</span>
-        <span class="mob-label">{item['label']}</span>
-        <span class="mob-dot"></span>
-    </button>"""
+# Inject wrapper div for CSS targeting
+st.markdown('<div class="mobile-bottom-nav-wrapper">', unsafe_allow_html=True)
 
-# "More" button for Edit/Delete and Print
-more_active = "active" if active_page in ["edit_expense", "printable"] else ""
-nav_html += f"""
-    <button class="mob-nav-btn {more_active}" onclick="
-        var sidebar = window.parent.document.querySelector('[data-testid=stSidebar]');
-        if (sidebar) {{ sidebar.style.display = 'block'; }}
-        var btn = window.parent.document.querySelector('[data-testid=collapsedControl]');
-        if (btn) {{ btn.click(); }}
-    ">
-        <span class="mob-icon">☰</span>
-        <span class="mob-label">More</span>
-        <span class="mob-dot"></span>
-    </button>
-</div>"""
+nav_cols = st.columns(len(BOTTOM_NAV) + 1)  # +1 for "More"
 
-st.markdown(nav_html, unsafe_allow_html=True)
+for i, item in enumerate(BOTTOM_NAV):
+    with nav_cols[i]:
+        label = f"{item['icon']}\n{item['label']}"
+        if st.button(label, key=f"mob_nav_{item['key']}", use_container_width=True):
+            st.session_state.active_page = item["key"]
+            st.session_state.show_more_menu = False
+            st.rerun()
 
-# ── Streamlit button nav for mobile (hidden visually, used as click targets) ──
-# We inject a hidden selectbox that the bottom nav JS clicks via the sidebar radio
-# The sidebar radio is already defined above; bottom nav JS triggers it.
+# "More" button
+with nav_cols[-1]:
+    more_icon = "✕" if st.session_state.show_more_menu else "☰"
+    if st.button(f"{more_icon}\nMore", key="mob_nav_more", use_container_width=True):
+        st.session_state.show_more_menu = not st.session_state.show_more_menu
+        st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── More submenu (Edit/Delete, Print) ────────────────────────────────────────
+if st.session_state.show_more_menu:
+    st.markdown("---")
+    st.markdown("**More options:**")
+    more_cols = st.columns(len(MORE_NAV))
+    for i, item in enumerate(MORE_NAV):
+        with more_cols[i]:
+            if st.button(f"{item['icon']} {item['label']}", key=f"more_nav_{item['key']}", use_container_width=True):
+                st.session_state.active_page = item["key"]
+                st.session_state.show_more_menu = False
+                st.rerun()
+    st.markdown("---")
 
 # ── Route to selected page ────────────────────────────────────────────────────
 page_key = st.session_state.active_page
