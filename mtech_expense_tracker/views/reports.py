@@ -7,7 +7,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db import (
-    get_all_expenses, get_paid_by_totals, get_semester_totals, get_total
+    get_all_expenses, get_paid_by_totals, get_semester_totals, get_total,
+    get_all_repayments, get_total_repaid, get_person_balances
 )
 
 SEMESTERS = ["Sem 1", "Sem 2", "Sem 3", "Sem 4"]
@@ -20,7 +21,7 @@ def fmt(amount):
 
 # ── Excel generation ──────────────────────────────────────────────────────────
 
-def generate_excel(df, paid_totals, sem_totals, grand_total):
+def generate_excel(df, paid_totals, sem_totals, grand_total, rep_df=None, balances_df=None, total_repaid=0.0):
     from openpyxl import Workbook
     from openpyxl.styles import (
         Font, Fill, PatternFill, Alignment, Border, Side, GradientFill
@@ -102,8 +103,57 @@ def generate_excel(df, paid_totals, sem_totals, grand_total):
         c.number_format = '₹#,##0.00'
         c.alignment = Alignment(horizontal="right")
 
+    next_row = pb_start + len(paid_totals) + 2
+
+    # Repayment history
+    if rep_df is not None and not rep_df.empty:
+        rp_start = next_row
+        ws.cell(row=rp_start, column=1, value="REPAYMENT HISTORY").font = Font(bold=True, size=12, color="0F4C81")
+        ws.merge_cells(f"A{rp_start}:G{rp_start}")
+        rp_hdr_row = rp_start + 1
+        rp_headers = ["Date", "Paid By", "Paid To", "Amount (₹)", "Note"]
+        for c_idx, h in enumerate(rp_headers, 1):
+            cell = ws.cell(row=rp_hdr_row, column=c_idx, value=h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = PatternFill("solid", fgColor="2E8B57")
+            cell.border = border_thin
+        for r_off, (_, rr) in enumerate(rep_df.iterrows(), 1):
+            rc = rp_hdr_row + r_off
+            vals = [rr.get("date", ""), rr.get("paid_by", ""), rr.get("paid_to", ""),
+                    rr.get("amount", 0), rr.get("note", "")]
+            for c_idx, val in enumerate(vals, 1):
+                cell = ws.cell(row=rc, column=c_idx, value=val)
+                cell.border = border_thin
+                if c_idx == 4:
+                    cell.number_format = '₹#,##0.00'
+                    cell.alignment = Alignment(horizontal="right")
+        next_row = rp_hdr_row + len(rep_df) + 2
+
+    # Outstanding balance per person
+    if balances_df is not None and not balances_df.empty:
+        bal_start = next_row
+        ws.cell(row=bal_start, column=1, value="OUTSTANDING BALANCE PER PERSON").font = Font(bold=True, size=12, color="0F4C81")
+        ws.merge_cells(f"A{bal_start}:G{bal_start}")
+        bal_hdr_row = bal_start + 1
+        bal_headers = ["Person", "Total Spent (₹)", "Repaid (₹)", "Still Owed (₹)"]
+        for c_idx, h in enumerate(bal_headers, 1):
+            cell = ws.cell(row=bal_hdr_row, column=c_idx, value=h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = PatternFill("solid", fgColor="C0392B")
+            cell.border = border_thin
+        for r_off, (_, br) in enumerate(balances_df.iterrows(), 1):
+            rc = bal_hdr_row + r_off
+            vals = [br["person"], br["spent"], br["repaid"], br["owed"]]
+            for c_idx, val in enumerate(vals, 1):
+                cell = ws.cell(row=rc, column=c_idx, value=val)
+                cell.border = border_thin
+                if c_idx in (2, 3, 4):
+                    cell.number_format = '₹#,##0.00'
+                    cell.alignment = Alignment(horizontal="right")
+        next_row = bal_hdr_row + len(balances_df) + 2
+
     # Grand total
-    gt_row = pb_start + len(paid_totals) + 2
+    gt_row = next_row
     ws.merge_cells(f"A{gt_row}:E{gt_row}")
     ws.cell(row=gt_row, column=1, value="GRAND TOTAL").font = Font(bold=True, size=13, color="FFFFFF")
     ws.cell(row=gt_row, column=1).fill = PatternFill("solid", fgColor="0F4C81")
@@ -114,6 +164,30 @@ def generate_excel(df, paid_totals, sem_totals, grand_total):
     gt_cell.fill = PatternFill("solid", fgColor="0F4C81")
     gt_cell.alignment = Alignment(horizontal="right", vertical="center")
     ws.row_dimensions[gt_row].height = 28
+
+    # Total repaid / net outstanding strip
+    tr_row = gt_row + 1
+    ws.merge_cells(f"A{tr_row}:E{tr_row}")
+    ws.cell(row=tr_row, column=1, value="TOTAL REPAID").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=tr_row, column=1).fill = PatternFill("solid", fgColor="2E8B57")
+    ws.cell(row=tr_row, column=1).alignment = Alignment(horizontal="right", vertical="center")
+    tr_cell = ws.cell(row=tr_row, column=6, value=total_repaid)
+    tr_cell.number_format = '₹#,##0.00'
+    tr_cell.font = Font(bold=True, size=11, color="FFFFFF")
+    tr_cell.fill = PatternFill("solid", fgColor="2E8B57")
+    tr_cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    no_row = tr_row + 1
+    net_outstanding = max(grand_total - total_repaid, 0)
+    ws.merge_cells(f"A{no_row}:E{no_row}")
+    ws.cell(row=no_row, column=1, value="NET OUTSTANDING").font = Font(bold=True, size=11, color="FFFFFF")
+    ws.cell(row=no_row, column=1).fill = PatternFill("solid", fgColor="C0392B")
+    ws.cell(row=no_row, column=1).alignment = Alignment(horizontal="right", vertical="center")
+    no_cell = ws.cell(row=no_row, column=6, value=net_outstanding)
+    no_cell.number_format = '₹#,##0.00'
+    no_cell.font = Font(bold=True, size=11, color="FFFFFF")
+    no_cell.fill = PatternFill("solid", fgColor="C0392B")
+    no_cell.alignment = Alignment(horizontal="right", vertical="center")
 
     # Column widths
     col_widths = [14, 12, 18, 20, 45, 16, 20]
@@ -128,7 +202,7 @@ def generate_excel(df, paid_totals, sem_totals, grand_total):
 
 # ── PDF generation ────────────────────────────────────────────────────────────
 
-def generate_pdf(df, paid_totals, sem_totals, grand_total):
+def generate_pdf(df, paid_totals, sem_totals, grand_total, rep_df=None, balances_df=None, total_repaid=0.0):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
@@ -304,7 +378,75 @@ def generate_pdf(df, paid_totals, sem_totals, grand_total):
         *[("BACKGROUND", (0, i), (-1, i), light_blue) for i in range(2, len(pb_data)-1, 2)],
     ]))
     story.append(pb_table)
-    story.append(Spacer(1, 0.8*cm))
+    story.append(Spacer(1, 0.5*cm))
+
+    # Repayment history
+    if rep_df is not None and not rep_df.empty:
+        story.append(Paragraph("💸 Repayment History", section_style))
+        rp_data = [["Date", "Paid By", "Paid To", "Amount", "Note"]]
+        for _, rr in rep_df.iterrows():
+            rp_data.append([
+                str(rr.get("date", "")), str(rr.get("paid_by", "")), str(rr.get("paid_to", "")),
+                fmt(rr.get("amount", 0)), str(rr.get("note", "") or "—"),
+            ])
+        rp_table = Table(rp_data, colWidths=[2.5*cm, 3.5*cm, 3.5*cm, 3*cm, 4.5*cm], repeatRows=1)
+        rp_table.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), success_color),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 8),
+            ("ALIGN",       (3, 1), (3, -1), "RIGHT"),
+            ("TOPPADDING",  (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING",(0,0), (-1, -1), 6),
+            ("GRID",        (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            *[("BACKGROUND", (0, i), (-1, i), light_blue) for i in range(2, len(rp_data), 2)],
+        ]))
+        story.append(rp_table)
+        story.append(Spacer(1, 0.5*cm))
+
+    # Outstanding balance per person
+    if balances_df is not None and not balances_df.empty:
+        story.append(Paragraph("⚖️ Outstanding Balance per Person", section_style))
+        bal_data = [["Person", "Total Spent", "Repaid", "Still Owed"]]
+        for _, br in balances_df.iterrows():
+            owed_str = "✅ Settled" if br["owed"] == 0 else fmt(br["owed"])
+            bal_data.append([br["person"], fmt(br["spent"]), fmt(br["repaid"]), owed_str])
+        bal_table = Table(bal_data, colWidths=[5*cm, 4*cm, 4*cm, 4*cm])
+        bal_table.setStyle(TableStyle([
+            ("BACKGROUND",  (0, 0), (-1, 0), accent_color),
+            ("TEXTCOLOR",   (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE",    (0, 0), (-1, -1), 9),
+            ("ALIGN",       (1, 0), (-1, -1), "RIGHT"),
+            ("TOPPADDING",  (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING",(0,0), (-1, -1), 7),
+            ("GRID",        (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+            *[("BACKGROUND", (0, i), (-1, i), light_blue) for i in range(2, len(bal_data), 2)],
+        ]))
+        story.append(bal_table)
+        story.append(Spacer(1, 0.5*cm))
+
+    # Overall repayment summary strip
+    net_outstanding = max(grand_total - total_repaid, 0)
+    summary_data = [["Grand Total", "Total Repaid", "Net Outstanding"],
+                     [fmt(grand_total), fmt(total_repaid), fmt(net_outstanding)]]
+    summary_table = Table(summary_data, colWidths=[doc.width/3]*3)
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND",  (0, 0), (-1, 0), primary_color),
+        ("TEXTCOLOR",   (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND",  (0, 1), (-1, 1), light_gray),
+        ("FONTNAME",    (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE",    (0, 0), (-1, -1), 11),
+        ("ALIGN",       (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING",  (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING",(0,0), (-1, -1), 8),
+        ("GRID",        (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 0.5*cm))
 
     # Footer
     story.append(HRFlowable(width="100%", thickness=1, color=primary_color))
@@ -330,6 +472,9 @@ def render():
     paid_totals = get_paid_by_totals()
     sem_totals  = get_semester_totals()
     grand_total = get_total()
+    rep_df       = get_all_repayments()
+    total_repaid = get_total_repaid()
+    balances_df  = get_person_balances()
 
     if df.empty:
         st.warning("⚠️ No expenses recorded yet. Please add expenses first.")
@@ -369,7 +514,8 @@ def render():
         </div>""", unsafe_allow_html=True)
         if st.button("📊 Generate Excel", use_container_width=True, key="gen_excel", type="primary"):
             with st.spinner("Generating Excel…"):
-                excel_bytes = generate_excel(filtered, f_paid_totals, f_sem_totals, f_grand)
+                excel_bytes = generate_excel(filtered, f_paid_totals, f_sem_totals, f_grand,
+                                              rep_df=rep_df, balances_df=balances_df, total_repaid=total_repaid)
             fname = f"MTech_Expenses_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
             st.download_button(
                 label="⬇️ Download Excel",
@@ -390,7 +536,8 @@ def render():
         </div>""", unsafe_allow_html=True)
         if st.button("📄 Generate PDF", use_container_width=True, key="gen_pdf", type="primary"):
             with st.spinner("Generating PDF…"):
-                pdf_bytes = generate_pdf(filtered, f_paid_totals, f_sem_totals, f_grand)
+                pdf_bytes = generate_pdf(filtered, f_paid_totals, f_sem_totals, f_grand,
+                                          rep_df=rep_df, balances_df=balances_df, total_repaid=total_repaid)
             fname = f"MTech_Expenses_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
             st.download_button(
                 label="⬇️ Download PDF",

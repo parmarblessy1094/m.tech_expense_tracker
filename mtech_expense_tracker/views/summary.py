@@ -2,7 +2,10 @@ import streamlit as st
 import pandas as pd
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.db import get_summary, get_paid_by_totals, get_semester_totals, get_total
+from database.db import (
+    get_summary, get_paid_by_totals, get_semester_totals, get_total,
+    get_person_balances, get_total_repaid
+)
 
 SEMESTERS = ["Sem 1", "Sem 2", "Sem 3", "Sem 4"]
 
@@ -24,15 +27,22 @@ def render():
     paid_totals = get_paid_by_totals()
     sem_totals  = get_semester_totals()
     grand_total = get_total()
+    total_repaid = get_total_repaid()
+    balances_df  = get_person_balances()
+    bal_map = {row["person"]: row for _, row in balances_df.iterrows()}
 
     paid_map = dict(zip(paid_totals["paid_by"], paid_totals["total"]))
     sem_map  = dict(zip(sem_totals["semester"], sem_totals["total"]))
 
     # ── Grand total header ────────────────────────────────────────────────────
+    net_outstanding = max(grand_total - total_repaid, 0)
     st.markdown(f"""
     <div class="summary-header">
         <span class="sh-title">M.Tech Expenses — Complete Summary</span>
-        <span class="sh-total">Grand Total: {fmt(grand_total)}</span>
+        <span class="sh-total">Grand Total: {fmt(grand_total)} &nbsp;·&nbsp;
+            <span style="color:#2E8B57;">Repaid: {fmt(total_repaid)}</span> &nbsp;·&nbsp;
+            <span style="color:#C0392B;">Outstanding: {fmt(net_outstanding)}</span>
+        </span>
     </div>""", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -62,11 +72,17 @@ def render():
 
         payer_total = payer_df["amount"].sum()
         payer_pct   = (payer_total / grand_total * 100) if grand_total else 0
+        bal = bal_map.get(payer)
+        repaid_str = fmt(bal["repaid"]) if bal is not None else fmt(0)
+        owed_str   = ("✅ Settled" if (bal is not None and bal["owed"] == 0) else fmt(bal["owed"] if bal is not None else payer_total))
 
         st.markdown(f"""
         <div class="payer-section-header">
             <span class="payer-name">👤 {payer}</span>
-            <span class="payer-total">Total: {fmt(payer_total)} &nbsp;({payer_pct:.1f}%)</span>
+            <span class="payer-total">Total: {fmt(payer_total)} &nbsp;({payer_pct:.1f}%) &nbsp;·&nbsp;
+                <span style="color:#2E8B57;">Repaid: {repaid_str}</span> &nbsp;·&nbsp;
+                <span style="color:#C0392B;">Owed: {owed_str}</span>
+            </span>
         </div>""", unsafe_allow_html=True)
 
         sems_in_payer = payer_df["semester"].unique()
@@ -140,3 +156,24 @@ def render():
         <span>🏆 Overall Total</span>
         <span class="gt-amt">{fmt(grand_total)}</span>
     </div>""", unsafe_allow_html=True)
+
+    # ── Repayment overview ────────────────────────────────────────────────────
+    if not balances_df.empty:
+        st.markdown("---")
+        st.markdown("### 💸 Repayment Overview")
+        rc = st.columns(min(len(balances_df), 4))
+        colors = ["#0F4C81", "#2E8B57", "#E8A020", "#C0392B", "#8E44AD", "#16A085"]
+        for i, (_, row) in enumerate(balances_df.iterrows()):
+            with rc[i % 4]:
+                owed_str = "✅ Settled" if row["owed"] == 0 else fmt(row["owed"])
+                st.markdown(f"""
+                <div class="metric-card metric-person" style="border-left-color:{colors[i % len(colors)]};">
+                    <div class="metric-label">{row['person']}</div>
+                    <div class="metric-value" style="color:{colors[i % len(colors)]};">{fmt(row['spent'])}</div>
+                    <div style="font-size:11px;margin-top:4px;">
+                        <span style="color:#2E8B57;">✓ Repaid: {fmt(row['repaid'])}</span><br>
+                        <span style="color:{'#C0392B' if row['owed'] > 0 else '#2E8B57'};">
+                            {'⚠ Owed: '+owed_str if row['owed'] > 0 else '✅ Fully Settled'}
+                        </span>
+                    </div>
+                </div>""", unsafe_allow_html=True)

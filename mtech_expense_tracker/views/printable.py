@@ -4,7 +4,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db import (
-    get_summary, get_paid_by_totals, get_semester_totals, get_total
+    get_summary, get_paid_by_totals, get_semester_totals, get_total,
+    get_all_repayments, get_total_repaid, get_person_balances
 )
 
 SEMESTERS = ["Sem 1", "Sem 2", "Sem 3", "Sem 4"]
@@ -23,6 +24,10 @@ def render():
     paid_totals = get_paid_by_totals()
     sem_totals  = get_semester_totals()
     grand_total = get_total()
+    rep_df       = get_all_repayments()
+    total_repaid = get_total_repaid()
+    net_outstanding = max(grand_total - total_repaid, 0)
+    balances_df  = get_person_balances()
 
     if df.empty:
         st.info("No expenses recorded yet.")
@@ -54,6 +59,18 @@ def render():
     for _, pr in paid_totals.iterrows():
         pct = (pr['total'] / grand_total * 100) if grand_total else 0
         pb_rows += f"<tr><td>{pr['paid_by']}</td><td class='amt'>{fmt(pr['total'])}</td><td>{pct:.1f}%</td></tr>"
+
+    rp_rows = ""
+    for _, rr in rep_df.iterrows():
+        note = rr['note'] if rr.get('note') else "—"
+        rp_rows += f"""<tr><td>{rr['date']}</td><td>{rr['paid_by']}</td><td>{rr['paid_to']}</td>
+            <td class="amt">{fmt(rr['amount'])}</td><td>{note}</td></tr>"""
+
+    bal_rows = ""
+    for _, br in balances_df.iterrows():
+        owed_str = "✅ Settled" if br["owed"] == 0 else fmt(br["owed"])
+        bal_rows += f"""<tr><td>{br['person']}</td><td class="amt">{fmt(br['spent'])}</td>
+            <td class="amt">{fmt(br['repaid'])}</td><td class="amt">{owed_str}</td></tr>"""
 
     html = f"""
     <html>
@@ -138,6 +155,33 @@ def render():
                     <thead><tr><th>Paid By</th><th>Total</th><th>%</th></tr></thead>
                     <tbody>{pb_rows}</tbody>
                 </table>
+            </div>
+        </div>
+
+        {"" if rep_df.empty else f'''
+        <h2>💸 Repayment History</h2>
+        <table>
+            <thead><tr><th>Date</th><th>Paid By</th><th>Paid To</th><th>Amount</th><th>Note</th></tr></thead>
+            <tbody>{rp_rows}</tbody>
+        </table>
+        '''}
+
+        {"" if balances_df.empty else f'''
+        <h2>⚖️ Outstanding Balance per Person</h2>
+        <table>
+            <thead><tr><th>Person</th><th>Total Spent</th><th>Repaid</th><th>Still Owed</th></tr></thead>
+            <tbody>{bal_rows}</tbody>
+        </table>
+        '''}
+
+        <div class="stats-row">
+            <div class="stat-box" style="border-left-color:#2E8B57;">
+                <div class="label">Total Repaid</div>
+                <div class="value" style="color:#2E8B57;">{fmt(total_repaid)}</div>
+            </div>
+            <div class="stat-box" style="border-left-color:#C0392B;">
+                <div class="label">Net Outstanding</div>
+                <div class="value" style="color:#C0392B;">{fmt(net_outstanding)}</div>
             </div>
         </div>
 
