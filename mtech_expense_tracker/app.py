@@ -32,6 +32,7 @@ NAV_ITEMS = {
     "📊 Dashboard":     "dashboard",
     "➕ Add Expense":   "add_expense",
     "✏️ Edit / Delete": "edit_expense",
+    "💸 Repayments":    "repayments",
     "📋 Summary":       "summary",
     "📁 Reports":       "reports",
     "🖨️ Print Report":  "printable",
@@ -228,9 +229,11 @@ h2 { color: #0F2942; }
 """, unsafe_allow_html=True)
 
 # ── DB stats ──────────────────────────────────────────────────────────────────
-from database.db import get_total, get_all_expenses
-total = get_total()
-count = len(get_all_expenses())
+from database.db import get_total, get_all_expenses, get_total_repaid
+total        = get_total()
+count        = len(get_all_expenses())
+total_repaid = get_total_repaid()
+net_owed     = max(total - total_repaid, 0)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -264,9 +267,17 @@ with st.sidebar:
             <span style="font-size:12px; color:#C8DFF0;">Total Records</span>
             <span style="font-size:13px; font-weight:700; color:#FFFFFF;">{count}</span>
         </div>
-        <div style="display:flex; justify-content:space-between;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
             <span style="font-size:12px; color:#C8DFF0;">Grand Total</span>
             <span style="font-size:13px; font-weight:700; color:#76D7A0;">₹{total:,.0f}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="font-size:12px; color:#C8DFF0;">Total Repaid</span>
+            <span style="font-size:13px; font-weight:700; color:#76D7A0;">₹{total_repaid:,.0f}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+            <span style="font-size:12px; color:#C8DFF0;">Still Owed</span>
+            <span style="font-size:13px; font-weight:700; color:{'#FF8080' if net_owed > 0 else '#76D7A0'};">{'₹'+f'{net_owed:,.0f}' if net_owed > 0 else '✅ Clear'}</span>
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -294,5 +305,7 @@ elif page_key == "printable":
     from views.printable import render
 elif page_key == "settings":
     from views.settings import render
+elif page_key == "repayments":
+    from views.repayments import render
 
 render()

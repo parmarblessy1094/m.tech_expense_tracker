@@ -5,7 +5,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db import (
     get_total, get_semester_totals, get_paid_by_totals,
-    get_category_totals, get_all_expenses
+    get_category_totals, get_all_expenses,
+    get_repayment_totals_by_person, get_total_repaid,
+    get_person_balances
 )
 
 SEMESTERS = ["Sem 1", "Sem 2", "Sem 3", "Sem 4"]
@@ -26,19 +28,22 @@ def render():
     sem_df     = get_semester_totals()
     paid_df    = get_paid_by_totals()
     cat_df     = get_category_totals()
-    all_exp    = get_all_expenses()
+    all_exp      = get_all_expenses()
+    total_repaid = get_total_repaid()
+    balances_df  = get_person_balances()   # person, spent, repaid, owed — includes lenders with 0 direct expenses
 
     sem_map = {row["semester"]: row["total"] for _, row in sem_df.iterrows()}
 
     # ── Top KPI row ───────────────────────────────────────────────────────────
     st.markdown("### 💰 Financial Overview")
     c0, c1, c2, c3, c4 = st.columns(5)
+    net_outstanding = max(total - total_repaid, 0)
     with c0:
         st.markdown(f"""
         <div class="metric-card metric-total">
             <div class="metric-label">GRAND TOTAL</div>
             <div class="metric-value">{fmt(total)}</div>
-            <div class="metric-sub">All Semesters Combined</div>
+            <div class="metric-sub" style="line-height:1.6;">Repaid: <b style='color:#2E8B57'>{fmt(total_repaid)}</b><br>Owed: <b style='color:#C0392B'>{fmt(net_outstanding)}</b></div>
         </div>""", unsafe_allow_html=True)
     for col, sem in zip([c1, c2, c3, c4], SEMESTERS):
         val = sem_map.get(sem, 0)
@@ -54,18 +59,32 @@ def render():
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Paid By Cards ─────────────────────────────────────────────────────────
-    if not paid_df.empty:
-        st.markdown("### 👥 Amount Paid By Each Person")
-        cols = st.columns(min(len(paid_df), 4))
+    if not balances_df.empty:
+        st.markdown("### 👥 Amount Paid · Repaid · Still Owed")
+        cols = st.columns(min(len(balances_df), 4))
         colors = ["#0F4C81", "#2E8B57", "#E8A020", "#C0392B", "#8E44AD", "#16A085"]
-        for i, (_, row) in enumerate(paid_df.iterrows()):
-            pct = (row["total"] / total * 100) if total else 0
+        for i, (_, row) in enumerate(balances_df.iterrows()):
+            person  = row["person"]
+            spent   = row["spent"]
+            repaid  = row["repaid"]
+            owed    = row["owed"]
+            pct     = (repaid / spent * 100) if spent else 0
+            color   = colors[i % len(colors)]
             with cols[i % 4]:
                 st.markdown(f"""
-                <div class="metric-card metric-person" style="border-left-color:{colors[i % len(colors)]};">
-                    <div class="metric-label">{row['paid_by']}</div>
-                    <div class="metric-value" style="color:{colors[i % len(colors)]};">{fmt(row['total'])}</div>
-                    <div class="metric-sub">{pct:.1f}% contribution</div>
+                <div class="metric-card metric-person" style="border-left-color:{color};">
+                    <div class="metric-label">{person}</div>
+                    <div class="metric-value" style="color:{color};">{fmt(spent)}</div>
+                    <div style="font-size:11px;margin-top:4px;">
+                        <span style="color:#2E8B57;">✓ Repaid: {fmt(repaid)}</span><br>
+                        <span style="color:{'#C0392B' if owed > 0 else '#2E8B57'};">
+                            {'⚠ Owed: '+fmt(owed) if owed > 0 else '✅ Fully Settled'}
+                        </span>
+                    </div>
+                    <div style="background:#EEE;border-radius:99px;height:5px;margin-top:8px;overflow:hidden;">
+                        <div style="width:{pct:.0f}%;height:5px;background:{color};border-radius:99px;"></div>
+                    </div>
+                    <div style="font-size:10px;color:#AAA;text-align:right;margin-top:2px;">{pct:.0f}% repaid</div>
                 </div>""", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 

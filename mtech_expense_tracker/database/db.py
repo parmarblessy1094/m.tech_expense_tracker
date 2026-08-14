@@ -55,6 +55,19 @@ def init_db():
     for person in default_paid_by:
         cur.execute("INSERT OR IGNORE INTO paid_by (name) VALUES (?)", (person,))
 
+    # repayments table – safe to always create here
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS repayments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            date        TEXT    NOT NULL,
+            paid_by     TEXT    NOT NULL,
+            paid_to     TEXT    NOT NULL,
+            amount      REAL    NOT NULL,
+            note        TEXT    DEFAULT '',
+            created_at  TEXT    DEFAULT (datetime('now','localtime'))
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -212,3 +225,93 @@ def delete_paid_by(name):
     conn.execute("DELETE FROM paid_by WHERE name=?", (name,))
     conn.commit()
     conn.close()
+
+
+# ── Repayments ────────────────────────────────────────────────────────────────
+
+
+def add_repayment(date, paid_by, paid_to, amount, note=""):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO repayments (date, paid_by, paid_to, amount, note) VALUES (?,?,?,?,?)",
+        (date, paid_by, paid_to, amount, note)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_repayments(paid_by=None, paid_to=None):
+    conn = get_connection()
+    query = "SELECT * FROM repayments WHERE 1=1"
+    params = []
+    if paid_by and paid_by != "All":
+        query += " AND paid_by = ?"
+        params.append(paid_by)
+    if paid_to and paid_to != "All":
+        query += " AND paid_to = ?"
+        params.append(paid_to)
+    query += " ORDER BY date DESC, id DESC"
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+
+def get_repayment_by_id(rid):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM repayments WHERE id=?", (rid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_repayment(rid):
+    conn = get_connection()
+    conn.execute("DELETE FROM repayments WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+
+
+def get_repayment_totals_by_person():
+    """Returns how much has been repaid TO each original payer (reducing their outstanding)."""
+    conn = get_connection()
+    df = pd.read_sql_query(
+        "SELECT paid_to, COALESCE(SUM(amount),0) as repaid FROM repayments GROUP BY paid_to",
+        conn
+    )
+    conn.close()
+    return df
+
+
+def get_total_repaid():
+    conn = get_connection()
+    row = conn.execute("SELECT COALESCE(SUM(amount),0) as total FROM repayments").fetchone()
+    conn.close()
+    return row["total"]
+
+
+def get_person_balances():
+    """
+    Returns one row per person who is EITHER an expense payer OR a repayment
+    recipient (paid_to), so lenders like 'Jayanti Mama' still get a balance
+    card even if every expense in the app is logged under 'Self'.
+
+    Columns: person, spent, repaid, owed
+    """
+    conn = get_connection()
+    spent_df = pd.read_sql_query(
+        "SELECT paid_by AS person, COALESCE(SUM(amount),0) as spent "
+        "FROM expenses GROUP BY paid_by",
+        conn
+    )
+    repaid_df = pd.read_sql_query(
+        "SELECT paid_to AS person, COALESCE(SUM(amount),0) as repaid "
+        "FROM repayments GROUP BY paid_to",
+        conn
+    )
+    conn.close()
+
+    merged = pd.merge(spent_df, repaid_df, on="person", how="outer")
+    merged["spent"] = merged["spent"].fillna(0.0).astype(float)
+    merged["repaid"] = merged["repaid"].fillna(0.0).astype(float)
+    merged["owed"] = (merged["spent"] - merged["repaid"]).clip(lower=0)
+    merged = merged.sort_values("spent", ascending=False).reset_index(drop=True)
+    return merged
